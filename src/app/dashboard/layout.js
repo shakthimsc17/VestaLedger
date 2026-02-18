@@ -14,6 +14,8 @@ import {
     HiOutlineTag,
     HiOutlineBanknotes,
     HiOutlineArrowPath,
+    HiOutlineCreditCard,
+    HiOutlineArrowTrendingUp,
 } from "react-icons/hi2";
 import Modal from "@/components/Modal";
 import ExpenseForm from "@/components/ExpenseForm";
@@ -23,6 +25,8 @@ const navItems = [
     { href: "/dashboard/expenses", label: "Expenses", icon: HiOutlineBanknotes },
     { href: "/dashboard/expenses/recurring", label: "Recurring", icon: HiOutlineArrowPath },
     { href: "/dashboard/categories", label: "Categories", icon: HiOutlineTag },
+    { href: "/dashboard/debts", label: "Debts", icon: HiOutlineCreditCard },
+    { href: "/dashboard/savings", label: "Savings", icon: HiOutlineArrowTrendingUp },
     { href: "/dashboard/reports", label: "Reports", icon: HiOutlineChartBar },
     { href: "/dashboard/settings", label: "Settings", icon: HiOutlineCog6Tooth },
 ];

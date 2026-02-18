@@ -3,30 +3,23 @@ import { useState, useEffect } from "react";
 import { useExpenseStore } from "@/store/expenseStore";
 import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
+import { HiOutlineCalendarDays } from "react-icons/hi2";
 
 export default function ExpenseForm({ onSuccess, initialData = null }) {
     const { categories, fetchCategories, addExpense, updateExpense } = useExpenseStore();
     const { user } = useAuthStore();
 
     const [formData, setFormData] = useState({
-        amount: "",
-        category_id: "",
-        note: "",
-        date: new Date().toISOString().split('T')[0],
+        amount: initialData?.amount || "",
+        category_id: initialData?.category_id || "",
+        note: initialData?.note || "",
+        date: initialData?.date || new Date().toISOString().split('T')[0],
     });
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         fetchCategories();
-        if (initialData) {
-            setFormData({
-                amount: initialData.amount,
-                category_id: initialData.category_id || "",
-                note: initialData.note || "",
-                date: initialData.date,
-            });
-        }
-    }, [fetchCategories, initialData]);
+    }, [fetchCategories]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -109,13 +102,18 @@ export default function ExpenseForm({ onSuccess, initialData = null }) {
 
             <div style={{ marginBottom: 20 }}>
                 <label className="input-label">Date</label>
-                <input
-                    type="date"
-                    className="input-field"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    required
-                />
+                <div style={{ position: "relative" }}>
+                    <HiOutlineCalendarDays size={18} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }} />
+                    <input
+                        type="date"
+                        className="input-field"
+                        style={{ paddingLeft: 36, cursor: "pointer" }}
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        onClick={(e) => e.target.showPicker?.()}
+                        required
+                    />
+                </div>
             </div>
 
             <div style={{ marginBottom: 24 }}>

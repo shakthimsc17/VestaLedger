@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { useExpenseStore } from "@/store/expenseStore";
 import { useAuthStore } from "@/store/authStore";
+import { useLoanStore } from "@/store/loanStore";
+import { useSavingsStore } from "@/store/savingsStore";
 import dayjs from "dayjs";
 import Link from "next/link";
 import {
@@ -11,6 +13,7 @@ import {
     HiOutlineArrowTrendingDown,
     HiOutlinePlusCircle,
     HiOutlineChartBar,
+    HiOutlineCreditCard,
 } from "react-icons/hi2";
 import { Skeleton } from "@/components/Skeleton";
 
@@ -27,6 +30,8 @@ export default function DashboardPage() {
         setDateRange,
         getComparison,
     } = useExpenseStore();
+    const { fetchLoans, getLoanSummary } = useLoanStore();
+    const { fetchSavings, getSavingsSummary } = useSavingsStore();
     const [comparison, setComparison] = useState({ lastMonthTotal: 0 });
     const [mounted, setMounted] = useState(false);
 
@@ -34,19 +39,23 @@ export default function DashboardPage() {
         setDateRange("month");
         fetchCategories();
         fetchBudgets();
+        fetchLoans();
+        fetchSavings();
         const loadComparison = async () => {
             const result = await getComparison();
             setComparison(result);
         };
         loadComparison();
         setMounted(true);
-    }, [fetchCategories, fetchBudgets, setDateRange, getComparison]);
+    }, [fetchCategories, fetchBudgets, setDateRange, getComparison, fetchLoans, fetchSavings]);
 
     useEffect(() => {
         if (mounted) fetchExpenses();
     }, [mounted, fetchExpenses]);
 
     const summary = getSummary();
+    const loanSummary = getLoanSummary();
+    const savingsSummary = getSavingsSummary();
     const currency = profile?.currency || "INR";
     const formatter = new Intl.NumberFormat("en-IN", {
         style: "currency",
@@ -149,9 +158,23 @@ export default function DashboardPage() {
                     {
                         label: "This Month",
                         value: formatter.format(summary.monthTotal),
-                        icon: HiOutlineArrowTrendingUp,
+                        icon: HiOutlineArrowTrendingDown,
                         color: "#ff9f43",
                         bg: "rgba(255,159,67,0.08)",
+                    },
+                    {
+                        label: "Total Debt",
+                        value: formatter.format(loanSummary.totalDebt),
+                        icon: HiOutlineCreditCard,
+                        color: "#ff4d4d",
+                        bg: "rgba(255,77,77,0.08)",
+                    },
+                    {
+                        label: "Total Savings",
+                        value: formatter.format(savingsSummary.totalSavings),
+                        icon: HiOutlineArrowTrendingUp,
+                        color: "#00e5a0",
+                        bg: "rgba(0,229,160,0.08)",
                     },
                     {
                         label: "Transactions",
