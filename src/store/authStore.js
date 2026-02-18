@@ -40,8 +40,20 @@ export const useAuthStore = create((set, get) => ({
                 .select('*')
                 .eq('id', userId)
                 .maybeSingle();
+
             if (!error && data) {
                 set({ profile: data });
+            } else if (!data) {
+                // Create profile if it doesn't exist
+                const { data: newProfile, error: createError } = await supabase
+                    .from('profiles')
+                    .insert({ id: userId })
+                    .select()
+                    .maybeSingle();
+
+                if (!createError && newProfile) {
+                    set({ profile: newProfile });
+                }
             }
         } catch (error) {
             console.error('Profile fetch error:', error);

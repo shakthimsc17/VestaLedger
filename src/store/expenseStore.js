@@ -19,11 +19,20 @@ export const useExpenseStore = create((set, get) => ({
     // Categories
     fetchCategories: async () => {
         try {
-            const { data, error } = await supabase
-                .from('categories')
-                .select('*')
+            const { data: { session } } = await supabase.auth.getSession();
+            let query = supabase.from('categories').select('*');
+
+            if (session) {
+                // Show default categories OR user specific ones
+                query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
+            } else {
+                query = query.is('user_id', null);
+            }
+
+            const { data, error } = await query
                 .order('is_default', { ascending: false })
                 .order('name');
+
             if (error) throw error;
             set({ categories: data || [] });
         } catch (error) {
@@ -129,9 +138,13 @@ export const useExpenseStore = create((set, get) => ({
         set({ loading: true });
         const { filters } = get();
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("Auth session missing");
+
             let query = supabase
                 .from('expenses')
                 .select('*, categories(name, emoji)')
+                .eq('user_id', session.user.id)
                 .gte('date', filters.startDate)
                 .lte('date', filters.endDate)
                 .order('date', { ascending: false })
@@ -220,11 +233,15 @@ export const useExpenseStore = create((set, get) => ({
     // Budgets
     fetchBudgets: async (month) => {
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
             const monthStr = month || dayjs().startOf('month').format('YYYY-MM-DD');
             const { data, error } = await supabase
                 .from('budgets')
                 .select('*, categories(name, emoji)')
-                .eq('month', monthStr);
+                .eq('month', monthStr)
+                .eq('user_id', session.user.id);
             if (error) throw error;
             set({ budgets: data || [] });
         } catch (error) {
@@ -266,9 +283,13 @@ export const useExpenseStore = create((set, get) => ({
     // Recurring Expenses
     fetchRecurringExpenses: async () => {
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
             const { data, error } = await supabase
                 .from('recurring_expenses')
                 .select('*, categories(name, emoji)')
+                .eq('user_id', session.user.id)
                 .order('created_at', { ascending: false });
             if (error) throw error;
             set({ recurringExpenses: data || [] });
@@ -348,6 +369,61 @@ export const useExpenseStore = create((set, get) => ({
             return { error: null };
         } catch (error) {
             return { error };
+        }
+    },
+
+    processRecurringExpense: async (id) => {
+        const { recurringExpenses } = get();
+        const rec = recurringExpenses.find(r => r.id === id);
+        if (!rec) return { error: { message: "Recurring expense not found" } };
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return { error: { message: "Auth session missing" } };
+
+            // 1. Create a regular expense record
+            const { error: expenseError } = await supabase
+                .from('expenses')
+                .insert({
+                    amount: rec.amount,
+                    category_id: rec.category_id,
+                    note: `Recurring: ${rec.note || ''}`,
+                    date: dayjs().format('YYYY-MM-DD'),
+                    user_id: session.user.id
+                });
+            if (expenseError) throw expenseError;
+
+            // 2. Calculate next due date
+            let nextDue = dayjs(rec.next_due);
+            switch (rec.frequency) {
+                case 'daily': nextDue = nextDue.add(1, 'day'); break;
+                case 'weekly': nextDue = nextDue.add(7, 'day'); break;
+                case 'monthly': nextDue = nextDue.add(1, 'month'); break;
+                case 'yearly': nextDue = nextDue.add(1, 'year'); break;
+                default: nextDue = nextDue.add(1, 'month');
+            }
+
+            // 3. Update recurring expense record
+            const { data: updatedRec, error: updateError } = await supabase
+                .from('recurring_expenses')
+                .update({ next_due: nextDue.format('YYYY-MM-DD') })
+                .eq('id', id)
+                .select('*, categories(name, emoji)')
+                .single();
+            if (updateError) throw updateError;
+
+            // 4. Update local state
+            set(state => ({
+                recurringExpenses: state.recurringExpenses.map(r => r.id === id ? updatedRec : r)
+            }));
+
+            // Refresh expenses list if filter matches
+            get().fetchExpenses();
+
+            return { data: updatedRec, error: null };
+        } catch (error) {
+            console.error("processRecurringExpense error:", error);
+            return { data: null, error };
         }
     },
 
