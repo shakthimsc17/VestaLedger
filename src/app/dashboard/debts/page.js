@@ -73,11 +73,8 @@ export default function DebtsPage() {
         if (editingLoan) {
             result = await updateLoan(editingLoan.id, payload);
         } else {
-            // When creating, the initial amount is the same as the starting total amount
-            result = await addLoan({
-                ...payload,
-                initial_amount: payload.total_amount
-            });
+            // Create new loan record
+            result = await addLoan(payload);
         }
 
         if (!result.error) {
