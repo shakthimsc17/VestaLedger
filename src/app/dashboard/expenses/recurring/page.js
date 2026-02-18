@@ -8,7 +8,8 @@ import {
     HiOutlinePencilSquare,
     HiOutlinePlus,
     HiOutlineClock,
-    HiOutlineArrowPath
+    HiOutlineArrowPath,
+    HiOutlineCheckCircle
 } from "react-icons/hi2";
 import Modal from "@/components/Modal";
 import RecurringExpenseForm from "@/components/RecurringExpenseForm";
@@ -19,17 +20,17 @@ export default function RecurringExpensesPage() {
     const {
         recurringExpenses,
         fetchRecurringExpenses,
-        deleteRecurringExpense
+        deleteRecurringExpense,
+        processRecurringExpense
     } = useExpenseStore();
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingRecurring, setEditingRecurring] = useState(null);
-    const [mounted, setMounted] = useState(false);
+    const [processingId, setProcessingId] = useState(null);
 
     useEffect(() => {
         fetchRecurringExpenses();
-        setMounted(true);
     }, [fetchRecurringExpenses]);
 
     const currency = profile?.currency || "INR";
@@ -46,7 +47,13 @@ export default function RecurringExpensesPage() {
         }
     };
 
-    if (!mounted) return null;
+    const handleMarkAsPaid = async (id) => {
+        setProcessingId(id);
+        const { error } = await processRecurringExpense(id);
+        setProcessingId(null);
+        if (error) toast.error(error.message);
+        else toast.success("Expense recorded and next due date updated!");
+    };
 
     return (
         <div>
@@ -128,6 +135,16 @@ export default function RecurringExpensesPage() {
                                     <span style={{ fontWeight: 600 }}>{dayjs(rec.next_due).format("DD MMM, YYYY")}</span>
                                 </div>
                             </div>
+
+                            <button
+                                onClick={() => handleMarkAsPaid(rec.id)}
+                                className="btn btn-primary"
+                                style={{ width: '100%', marginBottom: 12, display: 'flex', justifyContent: 'center', gap: 8 }}
+                                disabled={processingId === rec.id}
+                            >
+                                <HiOutlineCheckCircle size={18} />
+                                {processingId === rec.id ? "Processing..." : "Mark as Paid"}
+                            </button>
 
                             <div style={{ display: 'flex', gap: 12 }}>
                                 <button

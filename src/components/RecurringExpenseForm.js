@@ -3,32 +3,24 @@ import { useState, useEffect } from "react";
 import { useExpenseStore } from "@/store/expenseStore";
 import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
+import { HiOutlineCalendarDays } from "react-icons/hi2";
 
 export default function RecurringExpenseForm({ onSuccess, initialData = null }) {
     const { categories, fetchCategories, addRecurringExpense, updateRecurringExpense } = useExpenseStore();
     const { user } = useAuthStore();
 
     const [formData, setFormData] = useState({
-        amount: "",
-        category_id: "",
-        note: "",
-        frequency: "monthly",
-        next_due: new Date().toISOString().split('T')[0],
+        amount: initialData?.amount || "",
+        category_id: initialData?.category_id || "",
+        note: initialData?.note || "",
+        frequency: initialData?.frequency || "monthly",
+        next_due: initialData?.next_due || new Date().toISOString().split('T')[0],
     });
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         fetchCategories();
-        if (initialData) {
-            setFormData({
-                amount: initialData.amount,
-                category_id: initialData.category_id || "",
-                note: initialData.note || "",
-                frequency: initialData.frequency,
-                next_due: initialData.next_due,
-            });
-        }
-    }, [fetchCategories, initialData]);
+    }, [fetchCategories]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -120,13 +112,18 @@ export default function RecurringExpenseForm({ onSuccess, initialData = null }) 
 
             <div style={{ marginBottom: 20 }}>
                 <label className="input-label">Next Due Date</label>
-                <input
-                    type="date"
-                    className="input-field"
-                    value={formData.next_due}
-                    onChange={(e) => setFormData({ ...formData, next_due: e.target.value })}
-                    required
-                />
+                <div style={{ position: "relative" }}>
+                    <HiOutlineCalendarDays size={18} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }} />
+                    <input
+                        type="date"
+                        className="input-field"
+                        style={{ paddingLeft: 36, cursor: "pointer" }}
+                        value={formData.next_due}
+                        onChange={(e) => setFormData({ ...formData, next_due: e.target.value })}
+                        onClick={(e) => e.target.showPicker?.()}
+                        required
+                    />
+                </div>
             </div>
 
             <div style={{ marginBottom: 24 }}>

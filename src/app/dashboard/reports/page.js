@@ -2,6 +2,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useExpenseStore } from "@/store/expenseStore";
 import { useAuthStore } from "@/store/authStore";
+import { useLoanStore } from "@/store/loanStore";
+import { useSavingsStore } from "@/store/savingsStore";
 import dayjs from "dayjs";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,16 +22,19 @@ const COLORS = ['#00e5a0', '#7c6aff', '#ff9f43', '#4da6ff', '#ff6b6b', '#ffd166'
 export default function ReportsPage() {
     const { profile } = useAuthStore();
     const { expenses, filters, setFilter, setDateRange, fetchExpenses } = useExpenseStore();
-    const [mounted, setMounted] = useState(false);
+    const { loans, fetchLoans, payments, fetchPayments } = useLoanStore();
+    const { savings, fetchSavings } = useSavingsStore();
 
     useEffect(() => {
         if (!filters.dateRange) setDateRange("month");
-        setMounted(true);
     }, [filters.dateRange, setDateRange]);
 
     useEffect(() => {
-        if (mounted) fetchExpenses();
-    }, [mounted, fetchExpenses, filters.dateRange, filters.startDate, filters.endDate]);
+        fetchExpenses();
+        fetchLoans();
+        fetchSavings();
+        fetchPayments();
+    }, [fetchExpenses, fetchLoans, fetchSavings, fetchPayments, filters.dateRange, filters.startDate, filters.endDate]);
 
     const currency = profile?.currency || "INR";
     const formatter = new Intl.NumberFormat("en-IN", {
@@ -80,27 +85,54 @@ export default function ReportsPage() {
         categoryData.reduce((sum, item) => sum + item.value, 0),
         [categoryData]);
 
-    if (!mounted) return null;
+    // Data for Savings Progress
+    const savingsProgress = useMemo(() => {
+        return savings
+            .filter(s => s.target_amount > 0)
+            .map(s => ({
+                name: s.name,
+                emoji: s.emoji || '💰',
+                current: parseFloat(s.current_amount || 0),
+                target: parseFloat(s.target_amount),
+                percent: Math.min(100, Math.round((parseFloat(s.current_amount || 0) / parseFloat(s.target_amount)) * 100))
+            }))
+            .sort((a, b) => b.percent - a.percent)
+            .slice(0, 4);
+    }, [savings]);
 
-    const CustomTooltip = ({ active, payload, label }) => {
-        if (active && payload && payload.length) {
-            return (
-                <div style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    boxShadow: 'var(--shadow-md)'
-                }}>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{label}</p>
-                    <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent)' }}>
-                        {formatter.format(payload[0].value)}
-                    </p>
-                </div>
-            );
-        }
-        return null;
-    };
+    // Data for Debt Reduction
+    const debtReduction = useMemo(() => {
+        if (loans.length === 0) return null;
+
+        let totalInitial = 0;
+        let totalCurrent = 0;
+
+        loans.forEach(loan => {
+            const current = parseFloat(loan.total_amount || 0);
+            totalCurrent += current;
+
+            if (loan.initial_amount) {
+                totalInitial += parseFloat(loan.initial_amount);
+            } else {
+                // Reconstruct initial amount if missing: current balance + sum of all payments for this loan
+                const loanPayments = payments
+                    .filter(p => p.loan_id === loan.id)
+                    .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+                totalInitial += current + loanPayments;
+            }
+        });
+
+        const totalPaid = Math.max(0, totalInitial - totalCurrent);
+        const percent = totalInitial > 0 ? Math.round((totalPaid / totalInitial) * 100) : 0;
+
+        return {
+            totalPaid,
+            totalInitial,
+            percent
+        };
+    }, [loans, payments]);
+
+    // Removed early return to allow showing loans and savings reports even if expenses are empty
 
     const handleExportCSV = () => {
         const headers = ['Date', 'Category', 'Note', 'Amount'];
@@ -197,7 +229,7 @@ export default function ReportsPage() {
                                     tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
                                     tickFormatter={(value) => `${value}`}
                                 />
-                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
+                                <Tooltip content={<CustomTooltip formatter={formatter} />} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
                                 <Bar
                                     dataKey="amount"
                                     fill="var(--accent)"
@@ -228,7 +260,7 @@ export default function ReportsPage() {
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                                     ))}
                                 </Pie>
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip formatter={formatter} />} />
                             </PieChart>
                         </ResponsiveContainer>
                         <div style={{
@@ -296,6 +328,121 @@ export default function ReportsPage() {
                         </ResponsiveContainer>
                     </div>
                 </div>
+
+                {/* Savings & Debt Progress Section */}
+                <div className="card" style={{ gridColumn: 'span 12', padding: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                        <div style={{ padding: 10, borderRadius: 12, background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                            <HiOutlineArrowTrendingUp size={24} />
+                        </div>
+                        <div>
+                            <h3 style={{ fontSize: 18, fontWeight: 700 }}>Financial Progress</h3>
+                            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Tracking your goals and debt reduction</p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 32 }}>
+                        {/* Savings Goals */}
+                        <div>
+                            <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span>Savings Goals</span>
+                                <span className="badge badge-purple" style={{ fontSize: 10 }}>{savings.length} Active</span>
+                            </h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                                {savingsProgress.length === 0 ? (
+                                    <div style={{ padding: '20px', textAlign: 'center', background: 'var(--bg-input)', borderRadius: 12, color: 'var(--text-muted)', fontSize: 13 }}>
+                                        No savings goals trackable yet
+                                    </div>
+                                ) : (
+                                    savingsProgress.map(goal => (
+                                        <div key={goal.name}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13 }}>
+                                                <span style={{ fontWeight: 600 }}>{goal.emoji} {goal.name}</span>
+                                                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{goal.percent}%</span>
+                                            </div>
+                                            <div style={{ height: 8, background: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' }}>
+                                                <div
+                                                    style={{
+                                                        height: '100%',
+                                                        width: `${goal.percent}%`,
+                                                        background: 'linear-gradient(90deg, var(--accent) 0%, #a55eea 100%)',
+                                                        borderRadius: 4,
+                                                        transition: 'width 1s ease-out'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                                                <span>{formatter.format(goal.current)}</span>
+                                                <span>Goal: {formatter.format(goal.target)}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Debt Reduction */}
+                        <div>
+                            <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 20 }}>Debt Reduction</h4>
+                            {debtReduction ? (
+                                <div style={{
+                                    padding: '24px',
+                                    background: 'var(--bg-input)',
+                                    borderRadius: 16,
+                                    border: '1px solid var(--border)',
+                                    position: 'relative',
+                                    overflow: 'hidden'
+                                }}>
+                                    <div style={{ position: 'relative', zIndex: 2 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+                                            <div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Progress</div>
+                                                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-red)' }}>{debtReduction.percent}%</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Repaid</div>
+                                                <div style={{ fontSize: 16, fontWeight: 700 }}>{formatter.format(debtReduction.totalPaid)}</div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ height: 12, background: 'rgba(0,0,0,0.2)', borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
+                                            <div
+                                                style={{
+                                                    height: '100%',
+                                                    width: `${debtReduction.percent}%`,
+                                                    background: 'var(--accent-red)',
+                                                    borderRadius: 6,
+                                                    transition: 'width 1s ease-out'
+                                                }}
+                                            />
+                                        </div>
+
+                                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'center' }}>
+                                            Remaining Debt: <span style={{ fontWeight: 700, marginLeft: 6 }}>{formatter.format(debtReduction.totalInitial - debtReduction.totalPaid)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Decorative background circle */}
+                                    <div style={{
+                                        position: 'absolute',
+                                        right: '-20px',
+                                        bottom: '-20px',
+                                        width: '100px',
+                                        height: '100px',
+                                        borderRadius: '50%',
+                                        background: 'var(--accent-red)',
+                                        opacity: 0.05,
+                                        zIndex: 1
+                                    }} />
+                                </div>
+                            ) : (
+                                <div style={{ padding: '20px', textAlign: 'center', background: 'var(--bg-input)', borderRadius: 12, color: 'var(--text-muted)', fontSize: 13 }}>
+                                    No active loans found
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <style jsx global>{`
@@ -308,3 +455,23 @@ export default function ReportsPage() {
         </div>
     );
 }
+
+const CustomTooltip = ({ active, payload, label, formatter }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                padding: '12px',
+                borderRadius: '8px',
+                boxShadow: 'var(--shadow-md)'
+            }}>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{label}</p>
+                <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent)' }}>
+                    {formatter?.format ? formatter.format(payload[0].value) : payload[0].value}
+                </p>
+            </div>
+        );
+    }
+    return null;
+};
